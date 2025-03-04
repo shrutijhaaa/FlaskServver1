@@ -3,14 +3,21 @@ from flask_cors import CORS
 from transformers import pipeline
 import logging
 import os
+
 # Set up logging for debugging
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 CORS(app)
 
-# Initialize GPT-2 story generation
-story_generator = pipeline("text-generation", model="gpt2")
+# Lazy loading: Model loads only when needed
+story_generator = None
+
+def load_model():
+    global story_generator
+    if story_generator is None:  # Load only if not already loaded
+        story_generator = pipeline("text-generation", model="gpt2")
+    return story_generator
 
 # Clean the text input or output
 def clean_text(text):
@@ -21,6 +28,8 @@ def clean_text(text):
 
 # Generate structured story with beginning, middle, and end using title, characters, and story type
 def generate_story(title, characters, story_type):
+    story_generator = load_model()  # Load model lazily
+
     story_parts = {
         "beginning": (
             f"Title: {title}\n"

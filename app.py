@@ -16,6 +16,7 @@ story_generator = None
 def load_model():
     global story_generator
     if story_generator is None:  # Load only if not already loaded
+        logging.info("Loading GPT-2 model...")
         story_generator = pipeline("text-generation", model="gpt2")
     return story_generator
 
@@ -28,7 +29,7 @@ def clean_text(text):
 
 # Generate structured story with beginning, middle, and end using title, characters, and story type
 def generate_story(title, characters, story_type):
-    story_generator = load_model()  # Load model lazily
+    story_gen = load_model()  # Load model lazily
 
     story_parts = {
         "beginning": (
@@ -53,7 +54,7 @@ def generate_story(title, characters, story_type):
     story_paragraphs = []
     for key, prompt in story_parts.items():
         # Generate the paragraph for each part
-        generated_text = story_generator(prompt, max_length=800, num_return_sequences=1, truncation=True)[0]["generated_text"]
+        generated_text = story_gen(prompt, max_length=800, num_return_sequences=1, truncation=True)[0]["generated_text"]
         clean_paragraph = clean_text(generated_text)
         story_paragraphs.append(clean_paragraph)
     
@@ -68,13 +69,13 @@ def generate_story_endpoint():
     
     # Generate story paragraphs based on title, characters, and story type
     paragraphs = generate_story(title, characters, story_type)
-    story_pages = []
-    
-    for paragraph in paragraphs:
-        # Add the paragraph text to the response
-        story_pages.append({"type": "text", "content": paragraph})
+    story_pages = [{"type": "text", "content": paragraph} for paragraph in paragraphs]
 
     return jsonify({"pages": story_pages})
+
+@app.route('/')
+def home():
+    return "Story Composer API is running!"
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5001))  # Default to 5001 if not set

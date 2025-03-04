@@ -8,7 +8,9 @@ import os
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
-CORS(app)
+
+# Allow CORS for all origins (you can restrict it if needed)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
 # Lazy loading: Model loads only when needed
 story_generator = None
@@ -17,7 +19,11 @@ def load_model():
     global story_generator
     if story_generator is None:  # Load only if not already loaded
         logging.info("Loading GPT-2 model...")
-        story_generator = pipeline("text-generation", model="gpt2")
+        try:
+            story_generator = pipeline("text-generation", model="gpt2")
+            logging.info("Model loaded successfully.")
+        except Exception as e:
+            logging.error(f"Error loading model: {e}")
     return story_generator
 
 # Clean the text input or output
@@ -30,6 +36,9 @@ def clean_text(text):
 # Generate structured story with beginning, middle, and end using title, characters, and story type
 def generate_story(title, characters, story_type):
     story_gen = load_model()  # Load model lazily
+
+    if not story_gen:
+        return ["Error: Model failed to load."]
 
     story_parts = {
         "beginning": (
@@ -53,30 +62,42 @@ def generate_story(title, characters, story_type):
     
     story_paragraphs = []
     for key, prompt in story_parts.items():
-        # Generate the paragraph for each part
-        generated_text = story_gen(prompt, max_length=800, num_return_sequences=1, truncation=True)[0]["generated_text"]
-        clean_paragraph = clean_text(generated_text)
-        story_paragraphs.append(clean_paragraph)
-    
+        try:
+            # Generate the paragraph for each part
+            generated_text = story_gen(prompt, max_length=800, num_return_sequences=1, truncation=True)[0]["generated_text"]
+            clean_paragraph = clean_text(generated_text)
+            story_paragraphs.append(clean_paragraph)
+        except Exception as e:
+            logging.error(f"Error generating {key} part: {e}")
+            story_paragraphs.append(f"Error generating {key} part.")
+
     return story_paragraphs
 
 @app.route('/generate_story', methods=['POST'])
 def generate_story_endpoint():
-    data = request.json
-    title = data.get("title", "Untitled Story")
-    characters = data.get("characters", "Unknown Characters")
-    story_type = data.get("storyType", "General")
-    
-    # Generate story paragraphs based on title, characters, and story type
-    paragraphs = generate_story(title, characters, story_type)
-    story_pages = [{"type": "text", "content": paragraph} for paragraph in paragraphs]
+    try:
+        data = request.json
+        title = data.get("title", "Untitled Story")
+        characters = data.get("characters", "Unknown Characters")
+        story_type = data.get("storyType", "General")
 
-    return jsonify({"pages": story_pages})
+        logging.info(f"Received request: title={title}, characters={characters}, storyType={story_type}")
+        
+        # Generate story paragraphs based on title, characters, and story type
+        paragraphs = generate_story(title, characters, story_type)
+
+        story_pages = [{"type": "text", "content": paragraph} for paragraph in paragraphs]
+
+        return jsonify({"pages": story_pages})
+
+    except Exception as e:
+        logging.error(f"Error processing request: {e}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/')
 def home():
     return "Story Composer API is running!"
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5001))  # Default to 5001 if not set
+    port = int(os.environ.get("PORT", 10000))  # Set to 10000 to match Render logs
     app.run(host="0.0.0.0", port=port)
